@@ -2,15 +2,15 @@
 
 importer="texture"
 type="StreamTexture"
-path="res://.import/icon0_128x128_8bit.png-3c1d6d72ff9220d2a73fb432724415b0.stex"
+path="res://.import/platforms.png-79fd74a8b34359f2e57bbd63f0662ba2.stex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Asset/icon0_128x128_8bit.png"
-dest_files=[ "res://.import/icon0_128x128_8bit.png-3c1d6d72ff9220d2a73fb432724415b0.stex" ]
+source_file="res://Asset/brackeys/platforms.png"
+dest_files=[ "res://.import/platforms.png-79fd74a8b34359f2e57bbd63f0662ba2.stex" ]
 
 [params]
 

@@ -2,15 +2,15 @@
 
 importer="texture"
 type="StreamTexture"
-path="res://.import/splash_960x544_8bit.png-9bd3d042c7535373f843ce3d6955e331.stex"
+path="res://.import/fruit.png-ed3071f87b1098c08ef151f6ae0888c3.stex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Asset/splash_960x544_8bit.png"
-dest_files=[ "res://.import/splash_960x544_8bit.png-9bd3d042c7535373f843ce3d6955e331.stex" ]
+source_file="res://Asset/sprites/fruit.png"
+dest_files=[ "res://.import/fruit.png-ed3071f87b1098c08ef151f6ae0888c3.stex" ]
 
 [params]
 

@@ -22,6 +22,15 @@ func _process(delta):
 
 func _on_Obstacles_body_entered(body):
 	if body.name == "Player":
+		player.play_death()
+		# On laisse la petite anim "death" se jouer avant de relancer la scène,
+		# plutôt que de couper à cru comme avant.
+		var reload_timer = Timer.new()
+		reload_timer.wait_time = 0.4
+		reload_timer.one_shot = true
+		add_child(reload_timer)
+		reload_timer.start()
+		yield(reload_timer, "timeout")
 		get_tree().reload_current_scene()
 
 func _on_Goal_body_entered(body):
