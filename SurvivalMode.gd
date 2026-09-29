@@ -12,19 +12,15 @@ const SIDE_WALL_THICKNESS = 20.0
 const SIDE_WALL_HALF_HEIGHT = 2500000.0
 
 # --- Difficulté progressive ---
-# Pas de mur ici (contrairement à InfiniteMode), donc MAX_GAP reste sous
-# la hauteur de saut max (~245px avec gravity=1000 / jump_force=-700) pour
-# qu'un saut normal reste toujours possible, même tout en haut.
+# Pas de mur ici, donc MAX_GAP reste sous la hauteur de saut max (~245px).
 const MIN_GAP = 140.0
 const MAX_GAP = 210.0
 const DIFFICULTY_HEIGHT = 15000.0
-const MAX_GAP_ROW_CHANCE = 0.15 # la lave monte déjà plus vite en altitude, donc on est plus prudent ici
+const MAX_GAP_ROW_CHANCE = 0.15
 
-# Plateforme dimensionnée en multiple de la taille de tuile (32px) : on la
-# REMPLIT en répétant la tuile (stretch_mode = STRETCH_TILE) plutôt que de
-# l'étirer, pour ne pas déformer la texture.
+# Dimension en multiple de la taille de tuile (32px) : Biome pose autant de
+# tuiles que nécessaire, sans jamais en étirer une.
 const PLATFORM_WIDTH = 128.0 # 4 tuiles de 32px
-const PLATFORM_HEIGHT = 20.0
 
 var next_spawn_y = 400
 var started = false
@@ -145,8 +141,7 @@ func spawn_chunk():
 	var difficulty = get_difficulty()
 	var gap = lerp(MIN_GAP, MAX_GAP, difficulty)
 
-	# De temps en temps, rien à cet étage : oblige à un saut plus ample.
-	# Jamais deux trous d'affilée (sinon ça peut devenir infranchissable).
+	# De temps en temps, rien à cet étage. Jamais deux trous d'affilée.
 	var gap_row_chance = lerp(0.0, MAX_GAP_ROW_CHANCE, difficulty)
 	if not last_row_was_gap and randf() < gap_row_chance:
 		last_row_was_gap = true
@@ -160,17 +155,11 @@ func spawn_chunk():
 	platform.position = Vector2(rand_range(SAFE_MARGIN, SCREEN_WIDTH - SAFE_MARGIN), next_spawn_y)
 	add_child(platform)
 
-	var tex_rect = TextureRect.new()
-	tex_rect.stretch_mode = TextureRect.STRETCH_TILE
-	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tex_rect.texture = Biome.make_platform_texture(tier)
-	tex_rect.rect_size = Vector2(PLATFORM_WIDTH, PLATFORM_HEIGHT)
-	tex_rect.rect_position = Vector2(-PLATFORM_WIDTH / 2.0, -PLATFORM_HEIGHT / 2.0)
-	platform.add_child(tex_rect)
+	Biome.add_platform_visual(platform, PLATFORM_WIDTH, tier)
 
 	var col = CollisionShape2D.new()
 	var shape = RectangleShape2D.new()
-	shape.extents = Vector2(PLATFORM_WIDTH / 2.0, PLATFORM_HEIGHT / 2.0)
+	shape.extents = Vector2(PLATFORM_WIDTH / 2.0, Biome.SURFACE_HEIGHT / 2.0)
 	col.shape = shape
 	platform.add_child(col)
 

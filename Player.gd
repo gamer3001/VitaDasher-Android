@@ -2,7 +2,7 @@ extends KinematicBody2D
 
 export var gravity = 1000
 export var speed = 400
-export var jump_force = -700
+export var jump_force = -1700
 export var dash_speed = 800
 export var dash_duration = 0.15
 export var wall_slide_speed = 120
