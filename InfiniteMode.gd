@@ -4,10 +4,11 @@ extends Node2D
 # complète (jour -> coucher de soleil -> espace).
 const SKY_TRANSITION_HEIGHT = 15000.0
 
-# Largeur de l'écran de jeu (portrait, cf. project.godot).
-const SCREEN_WIDTH = 540.0
-const WALL_MARGIN = 60.0 # distance du bord de l'écran pour un mur
-const SAFE_MARGIN = 90.0 # marge de sécurité pour les plateformes normales
+# Largeur de terrain utilisable, en fraction de l'écran RÉEL du joueur
+# (calculée dans _ready) : ipad, téléphone étroit ou large, peu importe,
+# on génère toujours par rapport à ce que ce joueur voit vraiment.
+const WALL_MARGIN_RATIO = 0.111 # ~60px sur un écran de référence de 540
+const SAFE_MARGIN_RATIO = 0.167 # ~90px sur un écran de référence de 540
 
 # Murs invisibles sur les bords pour empêcher de tomber sur les côtés :
 # très hauts pour couvrir toute la montée, quelle que soit la hauteur atteinte.
@@ -16,29 +17,39 @@ const SIDE_WALL_HALF_HEIGHT = 2500000.0
 
 # --- Difficulté progressive ---
 # Avec gravity=1000 et jump_force=-700, la hauteur max d'un saut vertical
-# est d'environ 245px (v²/2g). MAX_GAP reste sous cette valeur.
-const MIN_GAP = 150.0 # espacement vertical de base (départ)
-const MAX_GAP = 220.0 # espacement vertical max (haute altitude)
-const DIFFICULTY_HEIGHT = 20000.0 # hauteur pour atteindre la difficulté max
+# est d'environ 245px (v²/2g). On garde une marge de sécurité en dessous
+# de cette limite, ET on s'assure qu'aucune combinaison de générations
+# (trou + plateforme suivante) ne dépasse jamais ce plafond : avant, un
+# "trou" pouvait s'ajouter à un écart déjà grand et rendre la suite
+# littéralement inatteignable (le bug de blocs "trop hauts").
+const MIN_GAP = 150.0
+const MAX_GAP = 195.0
+const SAFE_MAX_JUMP_GAP = 225.0 # plafond ABSOLU, jamais dépassé même avec un "grand trou"
+const DIFFICULTY_HEIGHT = 20000.0
 
 const MIN_WALL_CHANCE = 0.22
 const MAX_WALL_CHANCE = 0.4
 const MAX_SAFETY_PLATFORM_CHANCE = 0.9
 const MIN_SAFETY_PLATFORM_CHANCE = 0.35
-const MAX_GAP_ROW_CHANCE = 0.22
+const MAX_BIG_GAP_CHANCE = 0.22 # chance qu'un écart soit "grand" (mais toujours franchissable)
+const BIG_GAP_MULTIPLIER = 1.35
 
-# Dimensions en multiples de la taille des tuiles : Biome pose autant de
-# tuiles que nécessaire, sans jamais en étirer une.
-# La collision d'une plateforme ne couvre que sa ligne du dessus
-# (Biome.SURFACE_HEIGHT), le bloc plein dessous est purement décoratif.
-const PLATFORM_WIDTH = 128.0 # 4 tuiles de 32px
-const WALL_WIDTH = 16.0 # 1 tuile de 16px
+# Dimensions en multiples de la taille des tuiles (16px) : Biome pose autant
+# de tuiles que nécessaire, sans jamais en étirer une. La collision d'une
+# plateforme ne couvre que sa ligne du dessus (Biome.SURFACE_HEIGHT), le
+# bloc plein dessous est purement décoratif.
+const PLATFORM_WIDTH = 128.0 # 8 tuiles de 16px
+const WALL_WIDTH = 16.0 # 1 tuile
 const WALL_HEIGHT = 160.0 # 10 tuiles de 16px
-const SAFETY_PLATFORM_WIDTH = 96.0 # 3 tuiles de 32px
+const SAFETY_PLATFORM_WIDTH = 96.0 # 6 tuiles de 16px
 
 var next_spawn_y = 400
 var started = false
 var last_row_was_gap = false
+
+var screen_width = 540.0
+var wall_margin = 60.0
+var safe_margin = 90.0
 
 onready var player = $Player
 onready var camera = $Camera2D
@@ -51,18 +62,24 @@ onready var text_gradient = Biome.build_text_gradient()
 var time_elapsed = 0.0
 
 func _ready():
+	# On génère le terrain par rapport à la largeur RÉELLE de l'écran du
+	# joueur (iPad, PC, téléphone...), pas une valeur fixe pensée pour un
+	# seul format de téléphone.
+	screen_width = get_viewport_rect().size.x
+	wall_margin = screen_width * WALL_MARGIN_RATIO
+	safe_margin = screen_width * SAFE_MARGIN_RATIO
+
 	var pixel_font = Biome.load_pixel_font()
 	score_label.add_font_override("font", pixel_font)
 	timer_label.add_font_override("font", pixel_font)
 
 	spawn_side_walls()
-	# Génère les premières plateformes, un peu plus dense pour bien démarrer
 	for i in range(8):
 		spawn_chunk()
 
 func spawn_side_walls():
 	_spawn_side_wall(-SIDE_WALL_THICKNESS / 2.0)
-	_spawn_side_wall(SCREEN_WIDTH + SIDE_WALL_THICKNESS / 2.0)
+	_spawn_side_wall(screen_width + SIDE_WALL_THICKNESS / 2.0)
 
 func _spawn_side_wall(x):
 	var wall = StaticBody2D.new()
@@ -93,12 +110,10 @@ func update_ui():
 	var height = int(max(0, -player.position.y + 400))
 	score_label.text = "Hauteur: %d" % height
 
-	# Transition du ciel : jour -> coucher de soleil -> espace
 	var progress = clamp(float(height) / SKY_TRANSITION_HEIGHT, 0.0, 1.0)
 	sky_color.color = SkyGradient.get_sky_color(sky_gradient, progress)
 	$BackgroundLayer/StarsParticles.modulate.a = SkyGradient.get_stars_alpha(progress)
 
-	# Le texte suit le même dégradé que le sol/le ciel.
 	var text_color = Biome.get_text_color(text_gradient, progress)
 	score_label.add_color_override("font_color", text_color)
 	timer_label.add_color_override("font_color", text_color)
@@ -107,7 +122,6 @@ func get_difficulty():
 	var height_climbed = max(0.0, 400.0 - next_spawn_y)
 	return clamp(height_climbed / DIFFICULTY_HEIGHT, 0.0, 1.0)
 
-# Palier visuel (herbe/terre/lave/glace) pour un y de spawn donné.
 func get_tier_at(spawn_y: float) -> int:
 	var height_here = max(0.0, -spawn_y + 400.0)
 	var progress_here = clamp(height_here / SKY_TRANSITION_HEIGHT, 0.0, 1.0)
@@ -117,13 +131,13 @@ func spawn_chunk():
 	var difficulty = get_difficulty()
 	var gap = lerp(MIN_GAP, MAX_GAP, difficulty)
 
-	# Un vrai "trou" de temps en temps, jamais deux d'affilée.
-	var gap_row_chance = lerp(0.0, MAX_GAP_ROW_CHANCE, difficulty)
-	if not last_row_was_gap and randf() < gap_row_chance:
-		last_row_was_gap = true
-		next_spawn_y -= gap
-		return
-	last_row_was_gap = false
+	# Un écart occasionnellement plus grand pour casser le rythme, mais
+	# JAMAIS au-delà de SAFE_MAX_JUMP_GAP : contrairement à l'ancien système
+	# (une rangée vide de temps en temps), on ne saute plus JAMAIS deux
+	# écarts à la suite, donc plus de "trou double" impossible à franchir.
+	var big_gap_chance = lerp(0.0, MAX_BIG_GAP_CHANCE, difficulty)
+	if randf() < big_gap_chance:
+		gap = min(gap * BIG_GAP_MULTIPLIER, SAFE_MAX_JUMP_GAP)
 
 	var tier = get_tier_at(next_spawn_y)
 
@@ -131,12 +145,12 @@ func spawn_chunk():
 	var is_wall = randf() < wall_chance
 
 	var platform = StaticBody2D.new()
-	var side = 0
+	var side = 0.0
 	if is_wall:
-		side = WALL_MARGIN if randf() < 0.5 else SCREEN_WIDTH - WALL_MARGIN
+		side = wall_margin if randf() < 0.5 else screen_width - wall_margin
 		platform.position = Vector2(side, next_spawn_y)
 	else:
-		platform.position = Vector2(rand_range(SAFE_MARGIN, SCREEN_WIDTH - SAFE_MARGIN), next_spawn_y)
+		platform.position = Vector2(rand_range(safe_margin, screen_width - safe_margin), next_spawn_y)
 	add_child(platform)
 
 	if is_wall:
@@ -154,12 +168,15 @@ func spawn_chunk():
 	platform.add_child(col)
 
 	# Plateforme de secours à proximité du mur (pour le wall-jump), de plus
-	# en plus rare en altitude.
+	# en plus rare en altitude. Placée relativement au mur (pas à des
+	# coordonnées fixes) pour rester cohérente quelle que soit la largeur
+	# d'écran.
 	if is_wall:
 		var safety_chance = lerp(MAX_SAFETY_PLATFORM_CHANCE, MIN_SAFETY_PLATFORM_CHANCE, difficulty)
 		if randf() < safety_chance:
 			var jump_platform = StaticBody2D.new()
-			var platform_x = (rand_range(110, 195) if side > SCREEN_WIDTH / 2.0 else rand_range(345, 425))
+			var inward = 1.0 if side < screen_width / 2.0 else -1.0
+			var platform_x = side + inward * rand_range(50, 135)
 			jump_platform.position = Vector2(platform_x, next_spawn_y + 50)
 			add_child(jump_platform)
 

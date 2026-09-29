@@ -4,29 +4,34 @@ extends Node2D
 # même rythme dans les deux modes.
 const SKY_TRANSITION_HEIGHT = 15000.0
 
-const SCREEN_WIDTH = 540.0
-const SAFE_MARGIN = 90.0
+const SAFE_MARGIN_RATIO = 0.167 # ~90px sur un écran de référence de 540
 
-# Murs invisibles sur les bords pour empêcher de tomber sur les côtés
 const SIDE_WALL_THICKNESS = 20.0
 const SIDE_WALL_HALF_HEIGHT = 2500000.0
 
 # --- Difficulté progressive ---
-# Pas de mur ici, donc MAX_GAP reste sous la hauteur de saut max (~245px).
+# Pas de mur ici, donc aucune aide au saut : on reste bien en dessous de la
+# hauteur de saut max (~245px avec gravity=1000 / jump_force=-700), et on
+# plafonne aussi les "grands écarts" pour ne jamais générer un passage
+# impossible à sauter (l'ancien bug de blocs "trop hauts").
 const MIN_GAP = 140.0
-const MAX_GAP = 210.0
+const MAX_GAP = 190.0
+const SAFE_MAX_JUMP_GAP = 220.0
 const DIFFICULTY_HEIGHT = 15000.0
-const MAX_GAP_ROW_CHANCE = 0.15
+const MAX_BIG_GAP_CHANCE = 0.15
+const BIG_GAP_MULTIPLIER = 1.3
 
-# Dimension en multiple de la taille de tuile (32px) : Biome pose autant de
+# Dimension en multiple de la taille de tuile (16px) : Biome pose autant de
 # tuiles que nécessaire, sans jamais en étirer une.
-const PLATFORM_WIDTH = 128.0 # 4 tuiles de 32px
+const PLATFORM_WIDTH = 128.0 # 8 tuiles de 16px
 
 var next_spawn_y = 400
 var started = false
-var last_row_was_gap = false
 var base_speed = 50.0
 var lava_speed = 50.0
+
+var screen_width = 540.0
+var safe_margin = 90.0
 
 onready var player = $Player
 onready var lava = $Lava
@@ -41,6 +46,11 @@ var time_elapsed = 0.0
 var last_milestone = 0
 
 func _ready():
+	# Terrain généré par rapport à la largeur RÉELLE de l'écran du joueur
+	# (iPad, PC, téléphone...).
+	screen_width = get_viewport_rect().size.x
+	safe_margin = screen_width * SAFE_MARGIN_RATIO
+
 	var pixel_font = Biome.load_pixel_font()
 	score_label.add_font_override("font", pixel_font)
 	timer_label.add_font_override("font", pixel_font)
@@ -54,7 +64,7 @@ func _ready():
 
 func spawn_side_walls():
 	_spawn_side_wall(-SIDE_WALL_THICKNESS / 2.0)
-	_spawn_side_wall(SCREEN_WIDTH + SIDE_WALL_THICKNESS / 2.0)
+	_spawn_side_wall(screen_width + SIDE_WALL_THICKNESS / 2.0)
 
 func _spawn_side_wall(x):
 	var wall = StaticBody2D.new()
@@ -86,12 +96,10 @@ func update_ui():
 	var height = int(max(0, -player.position.y + 400))
 	score_label.text = "Hauteur: %d" % height
 
-	# Transition du ciel : jour -> coucher de soleil -> espace
 	var progress = clamp(float(height) / SKY_TRANSITION_HEIGHT, 0.0, 1.0)
 	sky_color.color = SkyGradient.get_sky_color(sky_gradient, progress)
 	$BackgroundLayer/StarsParticles.modulate.a = SkyGradient.get_stars_alpha(progress)
 
-	# Le texte suit le même dégradé que le sol/le ciel.
 	var text_color = Biome.get_text_color(text_gradient, progress)
 	score_label.add_color_override("font_color", text_color)
 	timer_label.add_color_override("font_color", text_color)
@@ -131,7 +139,6 @@ func get_difficulty():
 	var height_climbed = max(0.0, 400.0 - next_spawn_y)
 	return clamp(height_climbed / DIFFICULTY_HEIGHT, 0.0, 1.0)
 
-# Palier visuel (herbe/terre/lave/glace) pour un y de spawn donné.
 func get_tier_at(spawn_y: float) -> int:
 	var height_here = max(0.0, -spawn_y + 400.0)
 	var progress_here = clamp(height_here / SKY_TRANSITION_HEIGHT, 0.0, 1.0)
@@ -141,18 +148,17 @@ func spawn_chunk():
 	var difficulty = get_difficulty()
 	var gap = lerp(MIN_GAP, MAX_GAP, difficulty)
 
-	# De temps en temps, rien à cet étage. Jamais deux trous d'affilée.
-	var gap_row_chance = lerp(0.0, MAX_GAP_ROW_CHANCE, difficulty)
-	if not last_row_was_gap and randf() < gap_row_chance:
-		last_row_was_gap = true
-		next_spawn_y -= gap
-		return
-	last_row_was_gap = false
+	# Écart occasionnellement plus grand, mais toujours plafonné à
+	# SAFE_MAX_JUMP_GAP : sans mur ici pour rattraper le coup, il faut que
+	# CHAQUE écart reste franchissable en un seul saut normal.
+	var big_gap_chance = lerp(0.0, MAX_BIG_GAP_CHANCE, difficulty)
+	if randf() < big_gap_chance:
+		gap = min(gap * BIG_GAP_MULTIPLIER, SAFE_MAX_JUMP_GAP)
 
 	var tier = get_tier_at(next_spawn_y)
 
 	var platform = StaticBody2D.new()
-	platform.position = Vector2(rand_range(SAFE_MARGIN, SCREEN_WIDTH - SAFE_MARGIN), next_spawn_y)
+	platform.position = Vector2(rand_range(safe_margin, screen_width - safe_margin), next_spawn_y)
 	add_child(platform)
 
 	Biome.add_platform_visual(platform, PLATFORM_WIDTH, tier)
