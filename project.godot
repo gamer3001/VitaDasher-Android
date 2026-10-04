@@ -33,6 +33,8 @@ config/icon="res://Asset/icon0_128x128_8bit.png"
 [autoload]
 
 ScoreManager="*res://ScoreManager.gd"
+Wallet="*res://Wallet.gd"
+HudOverlay="*res://HudOverlay.gd"
 
 [display]
 

@@ -22,6 +22,12 @@ func _process(delta):
 
 func _on_Obstacles_body_entered(body):
 	if body.name == "Player":
+		# Une résurrection achetée en boutique épargne le reload : on
+		# repousse juste le joueur au-dessus du danger.
+		if Wallet.use_revive():
+			player.velocity = Vector2.ZERO
+			player.global_position += Vector2(0, -80)
+			return
 		player.play_death()
 		# On laisse la petite anim "death" se jouer avant de relancer la scène,
 		# plutôt que de couper à cru comme avant.

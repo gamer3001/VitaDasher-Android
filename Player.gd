@@ -2,7 +2,7 @@ extends KinematicBody2D
 
 export var gravity = 1000
 export var speed = 400
-export var jump_force = -1700
+export var jump_force = -700
 export var dash_speed = 800
 export var dash_duration = 0.15
 export var wall_slide_speed = 120
@@ -47,6 +47,12 @@ var last_wall_dir = 0.0 # direction "vers l'extérieur" du dernier mur touché (
 
 var is_dead = false # verrouille les contrôles/animations une fois l'anim de mort lancée
 
+# Capacités modifiées selon le skin choisi (Wallet.get_skin_stats) :
+var has_dash = true
+var has_double_jump = false
+var air_jumps_used = 0 # remis à 0 au sol ou en se raccrochant à un mur
+var dash_cooldown_mult = 1.0
+
 onready var coyote_timer = $CoyoteTimer
 onready var jump_buffer_timer = $JumpBufferTimer
 onready var dash_timer = $DashTimer
@@ -69,6 +75,29 @@ func _ready():
 	ghost_timer.one_shot = false
 
 	setup_stamina_bar()
+	modulate = Wallet.get_skin_color()
+	_apply_skin_stats()
+
+func _apply_skin_stats():
+	var stats = Wallet.get_skin_stats()
+	if stats.get("no_dash", false):
+		has_dash = false
+	if stats.get("double_jump", false):
+		has_double_jump = true
+	if stats.has("wall_stamina_mult"):
+		wall_stamina_max *= stats["wall_stamina_mult"]
+		wall_stamina = wall_stamina_max
+	if stats.has("jump_mult"):
+		jump_force *= stats["jump_mult"]
+		wall_jump_up *= stats["jump_mult"]
+	if stats.has("speed_mult"):
+		speed *= stats["speed_mult"]
+	if stats.has("dash_cooldown_mult"):
+		dash_cooldown_mult = stats["dash_cooldown_mult"]
+	if stats.has("wall_jump_mult"):
+		wall_jump_push *= stats["wall_jump_mult"]
+	if stats.has("stamina_drain_mult"):
+		wall_stamina_drain_rate *= stats["stamina_drain_mult"]
 
 func setup_stamina_bar():
 	stamina_bar_bg = ColorRect.new()
@@ -166,7 +195,7 @@ func _physics_process(delta):
 	if move_input != 0:
 		last_dir = move_input
 
-	if dash_just_pressed_this_frame and can_dash:
+	if dash_just_pressed_this_frame and can_dash and has_dash:
 		start_dash(last_dir)
 		return
 
@@ -218,9 +247,11 @@ func _physics_process(delta):
 		velocity.y = min(velocity.y, wall_slide_speed)
 		is_wall_sliding = true
 		can_dash = true
+		air_jumps_used = 0
 		wall_stamina = max(0.0, wall_stamina - wall_stamina_drain_rate * delta)
 
 	if is_on_floor():
+		air_jumps_used = 0
 		coyote_timer.start()
 		# La barre d'endurance ne se recharge que progressivement, au sol
 		wall_stamina = min(wall_stamina_max, wall_stamina + wall_stamina_regen_rate * delta)
@@ -232,6 +263,10 @@ func _physics_process(delta):
 		velocity.y = current_jump_force
 		jump_buffer_timer.stop()
 		coyote_timer.stop()
+	elif has_double_jump and air_jumps_used < 1 and jump_just_pressed_this_frame and not is_on_floor() and not can_cling:
+		velocity.y = current_jump_force
+		air_jumps_used += 1
+		jump_buffer_timer.stop()
 
 	if jump_just_released_this_frame and velocity.y < 0:
 		velocity.y *= 0.5
@@ -281,7 +316,7 @@ func _on_DashTimer_timeout():
 
 	# Cooldown via timer dynamique pour éviter tout blocage de flux
 	var cooldown = Timer.new()
-	cooldown.wait_time = 0.3
+	cooldown.wait_time = 0.3 * dash_cooldown_mult
 	cooldown.one_shot = true
 	add_child(cooldown)
 	cooldown.start()
